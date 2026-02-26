@@ -68,7 +68,7 @@ where $\bar{E}_{base}$ is the mean attribution vector on the training distributi
 
 ```bash
 # Clone the repository
-git clone https://github.com/<your-username>/XAI-Temporal-Stability.git
+git clone https://github.com/DranzerD/XAI-Temporal-Stability.git
 cd XAI-Temporal-Stability
 
 # Create a virtual environment (recommended)
