@@ -1,143 +1,106 @@
-# Temporal Stability of Explainable AI (XAI) in Financial Credit Models
+# XDrift: Temporal Stability of Explainable AI in Credit Risk Models
 
-[![Python 3.8+](https://img.shields.io/badge/python-3.8%2B-blue.svg)](https://www.python.org/downloads/)
-[![PyTorch](https://img.shields.io/badge/PyTorch-2.0%2B-ee4c2c.svg)](https://pytorch.org/)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
+[![XGBoost](https://img.shields.io/badge/XGBoost-2.0-blue.svg)](https://xgboost.readthedocs.io/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Jupyter Notebook](https://img.shields.io/badge/Jupyter-Notebook-orange.svg)](XAI_TemporalStability.ipynb)
+[![Jupyter Notebook](https://img.shields.io/badge/Jupyter-Notebook-orange.svg)](xdrift.ipynb)
 
 ## Abstract
 
 Machine learning models deployed in high-stakes financial domains — such as consumer credit scoring — demand not only robust predictive performance but also **interpretable and stable explanations** over time. While model monitoring traditionally focuses on accuracy degradation under distribution shift (concept drift), the temporal stability of post-hoc explanations has received limited attention.
 
-This project presents a rigorous empirical framework for evaluating **Explanation Drift** in credit default prediction models. We introduce the **Temporal Explanation Stability Index (TESI)**, a composite metric that quantifies how feature attribution explanations evolve across sequential time windows under natural temporal distribution shifts.
+This project presents an empirical framework, **XDrift**, for evaluating explanation drift in credit default prediction models. It introduces the **Explanation Stability Index (XSI)**, a composite metric that quantifies how SHAP feature attributions evolve across rolling time windows, and **EART (Explanation-Aware Retraining Trigger)**, a monitoring rule that fires on explanation drift *before* predictive performance (AUC) degrades.
 
 ### Core Hypothesis
 
-> _Explanation stability (measured by TESI) degrades before predictive performance (measured by ROC-AUC) drops under natural temporal distribution shifts._
+> _Explanation stability (measured by XSI) degrades before predictive performance (measured by ROC-AUC) drops under natural temporal distribution shifts — and this effect is strongest during Bear/Crisis market regimes._
 
-### TESI Formula
+### XSI Formula
 
-$$TESI_{t} = 0.5 \cdot \text{CosineSim}(\bar{E}_{base}, \bar{E}_{t}) + 0.5 \cdot \rho_s(\bar{E}_{base}, \bar{E}_{t})$$
+For consecutive rolling windows `t-1` and `t`, with SHAP attribution vectors `shap_t`:
 
-where $\bar{E}_{base}$ is the mean attribution vector on the training distribution, $\bar{E}_{t}$ is the mean attribution vector at time window $t$, and $\rho_s$ denotes the Spearman rank correlation coefficient.
+```
+XSI_t = 0.4 · Kendall_τ(rank_t, rank_{t-1})     # rank-order stability
+      + 0.4 · CosineSim(shap_t, shap_{t-1})     # directional stability
+      + 0.2 · (1 − PSI_shap(t, t-1))            # distribution stability
+```
+
+`XSI ∈ [0, 1]`; `XSI = 1` means explanations are identical to the previous window.
 
 ---
 
 ## Methodology
 
-1. Load and preprocess two independent real-world credit datasets spanning multiple years
-2. Train a PyTorch MLP on the earliest time window and freeze its weights
-3. Generate post-hoc explanations using **Integrated Gradients** and **GradientShap** (via [Captum](https://captum.ai/))
-4. Track both predictive performance (AUC, F1) and explanation stability (TESI) across future time windows
-5. Demonstrate that TESI serves as an early-warning indicator of model staleness across datasets
+1. **Phase 1 — Data pipeline & feature engineering.** Load LendingClub loan data, filter to resolved outcomes (Fully Paid vs. Charged Off/Default), engineer financial features, and merge quarterly macroeconomic context (Fed Funds Rate, VIX bucket).
+2. **Phase 2 — Credit default model.** Train an XGBoost classifier (optionally Optuna-tuned) with `scale_pos_weight` for class imbalance.
+3. **Phase 3 — XAI engine.** Generate global and local explanations with **TreeSHAP** (exact, non-sampled Shapley values) and **LIME** as a second-opinion comparator; compare their temporal stability.
+4. **Phase 4 — XDrift framework (core novelty).**
+   - Roll a fresh XGBoost + TreeSHAP fit across sequential time windows.
+   - Compute **XSI** between consecutive windows.
+   - Label each window's market regime (Bull / Neutral / Bear+Crisis) with a 3-state HMM over macroeconomic features.
+   - Run **EART**: trigger a retraining alert when XSI drops below threshold, and compare its lead time against an AUC-degradation baseline trigger.
+5. **Phase 5 — Results & figures.** Regime-stratified XSI/AUC summary table and the full set of paper figures (XSI timeline, XSI-by-regime violin plot, XSI component decomposition, EART vs. baseline trigger comparison, SHAP-vs-LIME agreement, AUC-vs-XSI scatter).
 
-## Datasets
+## Dataset
 
-| Dataset                                  | Type                        | Years     | Features                              | Source                                                                                               |
-| ---------------------------------------- | --------------------------- | --------- | ------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| **LendingClub** (Primary)                | Peer-to-peer personal loans | 2013–2017 | 8 named financial features            | [Kaggle: wordsforthewise/lending-club](https://www.kaggle.com/datasets/wordsforthewise/lending-club) |
-| **Amex Default Prediction** (Robustness) | Credit card default         | 2017–2018 | 8 anonymized features (B, D, S, P, R) | [Kaggle: amex-default-prediction](https://www.kaggle.com/competitions/amex-default-prediction)       |
+| Dataset                   | Type                        | Years     | Source                                                                                               |
+| -------------------------- | --------------------------- | --------- | ----------------------------------------------------------------------------------------------------|
+| **LendingClub** (Primary) | Peer-to-peer personal loans | 2007–2018 | [Kaggle: wordsforthewise/lending-club](https://www.kaggle.com/datasets/wordsforthewise/lending-club) |
 
-> **Note:** The datasets are not included in this repository due to size and licensing. See [Data Setup](#data-setup) for download instructions.
-
-## Key Findings
-
-1. **TESI degrades faster than AUC** — On LendingClub, TESI drops ~4× faster than AUC across 5 years. The same pattern emerges across quarterly windows on Amex.
-2. **Cross-dataset generalizability** — The TESI degradation pattern holds across named vs. anonymized features, multi-year vs. quarterly drift, and personal loans vs. credit card portfolios.
-3. **Method-agnostic drift** — Both Integrated Gradients and GradientShap exhibit consistent TESI degradation.
-4. **Actionable thresholds** — TESI thresholds: stable (> 0.95), warning (0.85–0.95), critical (< 0.85).
+> **Note:** The dataset is not included in this repository due to size and licensing. See [Getting Started](#getting-started) below.
 
 ## Repository Structure
 
 ```
-├── XAI_TemporalStability.ipynb   # Main experiment notebook (end-to-end pipeline)
-├── README.md                      # This file
-├── requirements.txt               # Python dependencies
-├── LICENSE                        # MIT License
-└── .gitignore                     # Git ignore rules
+├── xdrift.ipynb       # Main notebook: full XDrift pipeline (Phases 1-5)
+├── RUNBOOK.md          # How to run it (Kaggle/local), plus a log of bugs found & fixed
+├── README.md           # This file
+├── requirements.txt    # Python dependencies (local runs)
+├── LICENSE             # MIT License
+└── .gitignore          # Git ignore rules
 ```
 
 ## Getting Started
 
-### Prerequisites
+The notebook is built for Kaggle, where the dataset and most dependencies are pre-installed. See **[RUNBOOK.md](RUNBOOK.md)** for full step-by-step instructions (Kaggle and local), recommended smoke-test settings, and a log of real bugs that were found and fixed by execution.
 
-- Python 3.8+
-- CUDA-compatible GPU (optional, CPU works but slower)
-
-### Installation
+Quick summary:
 
 ```bash
-# Clone the repository
-git clone https://github.com/DranzerD/XAI-Temporal-Stability.git
-cd XAI-Temporal-Stability
-
-# Create a virtual environment (recommended)
+# Local setup
 python -m venv venv
-source venv/bin/activate        # Linux/macOS
-venv\Scripts\activate           # Windows
-
-# Install dependencies
+source venv/bin/activate        # Windows: venv\Scripts\activate
 pip install -r requirements.txt
+kaggle datasets download -d wordsforthewise/lending-club
+unzip lending-club.zip -d data/
 ```
 
-### Data Setup
-
-This project uses Kaggle datasets. You need a [Kaggle account](https://www.kaggle.com/) and API credentials.
-
-**Option A — Run on Kaggle (Recommended):**
-
-1. Upload the notebook to [Kaggle Notebooks](https://www.kaggle.com/code)
-2. Add the datasets via **Add Data** → search for `lending-club` (by wordsforthewise) and `amex-default-prediction`
-3. Run all cells
-
-**Option B — Run Locally:**
-
-1. Install the Kaggle CLI: `pip install kaggle`
-2. Download datasets:
-   ```bash
-   kaggle datasets download -d wordsforthewise/lending-club
-   kaggle competitions download -c amex-default-prediction
-   ```
-3. Place the data files in the appropriate paths (update file paths in the notebook if needed)
-
-### Running the Notebook
-
-```bash
-jupyter notebook XAI_TemporalStability.ipynb
-```
-
-Or open directly in VS Code with the Jupyter extension.
+Then update `RAW_DATA_FILE` in the notebook's config cell to point at the unzipped CSV, and run all cells. Start with a low `SHAP_SAMPLES_PER_WINDOW` and `N_OPTUNA_TRIALS = 0` for a smoke test before committing to the full run — see [RUNBOOK.md](RUNBOOK.md) for details.
 
 ## Technical Stack
 
-| Library                                                                        | Purpose                                                           |
-| ------------------------------------------------------------------------------ | ----------------------------------------------------------------- |
-| [PyTorch](https://pytorch.org/)                                                | Model construction, training, and inference                       |
-| [Captum](https://captum.ai/)                                                   | Post-hoc feature attribution (Integrated Gradients, GradientShap) |
-| [scikit-learn](https://scikit-learn.org/)                                      | Evaluation metrics (ROC-AUC, F1) and preprocessing                |
-| [SciPy](https://scipy.org/)                                                    | Spearman rank correlation for TESI computation                    |
-| [pandas](https://pandas.pydata.org/)                                           | Data manipulation and temporal windowing                          |
-| [matplotlib](https://matplotlib.org/) / [seaborn](https://seaborn.pydata.org/) | Publication-quality visualizations                                |
+| Library                                                   | Purpose                                                    |
+| ----------------------------------------------------------| ------------------------------------------------------------ |
+| [XGBoost](https://xgboost.readthedocs.io/)                | Credit default model (`tree_method="hist"`)                |
+| [SHAP](https://shap.readthedocs.io/)                      | TreeSHAP attributions — the core input to XSI              |
+| [LIME](https://github.com/marcotcr/lime)                  | Second-opinion local explanations                           |
+| [hmmlearn](https://hmmlearn.readthedocs.io/)               | 3-state HMM for market regime detection                    |
+| [Optuna](https://optuna.org/)                              | Hyperparameter tuning for the XGBoost model                |
+| [scikit-learn](https://scikit-learn.org/)                  | Evaluation metrics (ROC-AUC, KS, Gini) and preprocessing   |
+| [SciPy](https://scipy.org/) / [scikit-posthocs](https://scikit-posthocs.readthedocs.io/) | Kendall τ, statistical post-hoc tests |
+| [pandas](https://pandas.pydata.org/)                       | Data manipulation and rolling-window generation            |
+| [matplotlib](https://matplotlib.org/) / [seaborn](https://seaborn.pydata.org/) | Paper figures                          |
 
 ## Practical Implications
 
-TESI can serve as a **proactive monitoring metric** for deployed models:
-
-$$\text{If } TESI_t < 0.85 \text{ while } AUC_t > 0.70 \implies \text{Trigger retraining / audit}$$
-
-This is relevant for regulatory compliance under the **EU AI Act** (Article 9: Risk Management) and **SR 11-7** (OCC/Federal Reserve model risk management guidance).
+XSI is designed as a **proactive monitoring metric** for deployed credit models — EART can trigger a retraining/audit before AUC-based monitoring would notice anything wrong. This is relevant for regulatory compliance under the **EU AI Act** (Article 9: Risk Management) and **SR 11-7** (OCC/Federal Reserve model risk management guidance).
 
 ## References
 
-1. Sundararajan, M., Taly, A., & Yan, Q. (2017). Axiomatic Attribution for Deep Networks. _ICML_.
-2. Erion, G., et al. (2021). Improving Performance of Deep Learning Models with Axiomatic Attribution Priors and Expected Gradients. _Nature Machine Intelligence_.
-3. Lundberg, S. M., & Lee, S.-I. (2017). A Unified Approach to Interpreting Model Predictions. _NeurIPS_.
-4. Kokhlikyan, N., et al. (2020). Captum: A unified and generic model interpretability library for PyTorch. _arXiv:2009.07896_.
+1. Lundberg, S. M., & Lee, S.-I. (2017). A Unified Approach to Interpreting Model Predictions. _NeurIPS_.
+2. Ribeiro, M. T., Singh, S., & Guestrin, C. (2016). "Why Should I Trust You?": Explaining the Predictions of Any Classifier. _KDD_.
+3. Lundberg, S. M., et al. (2020). From Local Explanations to Global Understanding with Explainable AI for Trees. _Nature Machine Intelligence_.
 
 ## License
 
 This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
-
----
-
-_Developed for IEEE/Springer XAI conference submission. All results are fully reproducible from fixed random seeds (SEED=42)._
