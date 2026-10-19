@@ -1,10 +1,10 @@
 # XDrift — Runbook
 
-`XDrift_XSI_FIXED.ipynb` is your original notebook with 4 real bugs fixed and verified. I found these by actually executing the code (not just reading it) against a synthetic dataset shaped like LendingClub — each one was a genuine crash or silent-failure, not a hypothetical. Details in "What was actually broken" below.
+`xdrift.ipynb` is the notebook, with the bugs below fixed and verified. I found these by actually executing the code (not just reading it) against a synthetic dataset shaped like LendingClub — each one was a genuine crash or silent-failure, not a hypothetical. Details in "What was actually broken" below.
 
 ## Fastest path: Kaggle (recommended — this is what the notebook is built for)
 
-1. Go to [kaggle.com/code](https://www.kaggle.com/code) → **New Notebook** → **File → Import Notebook** → upload `XDrift_XSI_FIXED.ipynb`.
+1. Go to [kaggle.com/code](https://www.kaggle.com/code) → **New Notebook** → **File → Import Notebook** → upload `xdrift.ipynb`.
 2. **Add Data** (right sidebar) → search `lending-club` → add the dataset by `wordsforthewise`. Kaggle will mount it at `/kaggle/input/...` — confirm the path printed by cell 4 (`Dataset found: ...`) matches `RAW_DATA_FILE`. If Kaggle mounts it under a different exact path, update `RAW_DATA_FILE` in the config cell to match (this is the #1 reason people get a `FileNotFoundError` on Kaggle).
 3. Turn on **GPU accelerator** (Settings → Accelerator → GPU T4/P100) if available — not required, but `tree_method="hist"` and TreeSHAP both benefit.
 4. **First run — smoke test, not the paper run:** in the config cell, leave `N_OPTUNA_TRIALS = 0`, and in the run cell set `SHAP_SAMPLES_PER_WINDOW = 60` (down from 300) just to confirm the whole notebook completes without error. Run All. This should take under 10 minutes on Kaggle's default settings.
@@ -26,21 +26,25 @@ kaggle datasets download -d wordsforthewise/lending-club
 unzip lending-club.zip -d data/
 ```
 
-Then in the notebook's config cell, change:
-```python
-RAW_DATA_FILE = "data/accepted_2007_to_2018Q4.csv"   # or wherever you unzipped it
-WORKING_DIR    = "./working"
-```
-and remove/comment the `!pip install -q hmmlearn lime optuna` line since `requirements.txt` already installs them. Then:
+The notebook detects whether it's running on Kaggle (`/kaggle/input` exists) and picks paths accordingly. Locally it reads `data/accepted_2007_to_2018Q4.csv` and writes to `./working` by default, and it skips the `pip install` cell since `requirements.txt` already installs those packages. If you unzipped the CSV somewhere else, override the path with an environment variable instead of editing the notebook:
+
 ```bash
-jupyter notebook XDrift_XSI_FIXED.ipynb
+# macOS / Linux
+export XDRIFT_RAW_DATA="path/to/accepted_2007_to_2018Q4.csv"
+# Windows (PowerShell)
+$env:XDRIFT_RAW_DATA = "path\to\accepted_2007_to_2018Q4.csv"
+```
+
+`XDRIFT_WORKING_DIR` works the same way for the output folder. Then:
+```bash
+jupyter notebook xdrift.ipynb
 ```
 Run All. Same smoke-test-first advice as above applies locally too — start with a low `SHAP_SAMPLES_PER_WINDOW` to confirm it completes before committing to the full run, especially without a GPU.
 
 You can also execute headlessly to double check everything runs clean before opening it:
 ```bash
 jupyter nbconvert --to notebook --execute --ExecutePreprocessor.timeout=3600 \
-  --output XDrift_executed.ipynb XDrift_XSI_FIXED.ipynb
+  --output xdrift_executed.ipynb xdrift.ipynb
 ```
 
 ## What was actually broken (verified by execution, not inspection)

@@ -75,7 +75,7 @@ kaggle datasets download -d wordsforthewise/lending-club
 unzip lending-club.zip -d data/
 ```
 
-Then update `RAW_DATA_FILE` in the notebook's config cell to point at the unzipped CSV, and run all cells. Start with a low `SHAP_SAMPLES_PER_WINDOW` and `N_OPTUNA_TRIALS = 0` for a smoke test before committing to the full run — see [RUNBOOK.md](RUNBOOK.md) for details.
+The notebook uses `data/accepted_2007_to_2018Q4.csv` locally by default. If your CSV lives elsewhere, set `XDRIFT_RAW_DATA` to its path before launching Jupyter, then run all cells. Start with a low `SHAP_SAMPLES_PER_WINDOW` and `N_OPTUNA_TRIALS = 0` for a smoke test before committing to the full run — see [RUNBOOK.md](RUNBOOK.md) for details.
 
 ## Technical Stack
 
