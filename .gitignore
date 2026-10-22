@@ -79,3 +79,5 @@ wandb/
 !results_v2/*.csv
 results_v2/cache/
 !results_v1/*.csv
+!results_v3/*.csv
+results_v3/cache/
