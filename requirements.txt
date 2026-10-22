@@ -26,7 +26,11 @@ tqdm>=4.66.0
 
 # Parquet I/O (train.parquet / test.parquet saves) — not listed originally,
 # to_parquet() has no fallback and will crash without one of these.
-pyarrow>=14.0.0
+pyarrow>=14.0.0,<18.0.0  # newer pyarrow requires NumPy 2, but numpy is pinned to 1.26.4 above
+
+# xdrift_v2.py: markdown tables in RESULTS.md; tests
+tabulate>=0.9.0
+pytest>=7.0.0
 
 # Notebook execution (optional, for CI)
 # jupyter>=1.0.0

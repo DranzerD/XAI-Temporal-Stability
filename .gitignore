@@ -74,3 +74,8 @@ models/
 logs/
 outputs/
 wandb/
+
+# v2 results are small and meant to be committed; the raw per-window cache is not
+!results_v2/*.csv
+results_v2/cache/
+!results_v1/*.csv
