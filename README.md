@@ -9,9 +9,9 @@
 
 Machine learning models deployed in high-stakes financial domains — such as consumer credit scoring — demand not only robust predictive performance but also **interpretable and stable explanations** over time. While model monitoring traditionally focuses on accuracy degradation under distribution shift (concept drift), the temporal stability of post-hoc explanations has received limited attention.
 
-This project presents an empirical framework, **XDrift**, for evaluating explanation drift in credit default prediction models. It introduces the **Explanation Stability Index (XSI)**, a composite metric that quantifies how SHAP feature attributions evolve across rolling time windows, and **EART (Explanation-Aware Retraining Trigger)**, a monitoring rule that fires on explanation drift *before* predictive performance (AUC) degrades.
+This project presents an empirical framework, **XDrift**, for evaluating explanation drift in credit default prediction models. It introduces the **Explanation Stability Index (XSI)**, a composite metric that quantifies how SHAP feature attributions evolve across rolling time windows, and **EART (Explanation-Aware Retraining Trigger)**, a proposed monitoring rule meant to fire on explanation drift *before* predictive performance (AUC) degrades. The repo then tests those ideas on real data with a pre-declared analysis — and reports where they do and do not hold (see [Findings](#findings)).
 
-### Core Hypothesis
+### Core Hypothesis (tested — see Findings)
 
 > _Explanation stability (measured by XSI) degrades before predictive performance (measured by ROC-AUC) drops under natural temporal distribution shifts — and this effect is strongest during Bear/Crisis market regimes._
 
@@ -29,6 +29,37 @@ XSI_t = 0.4 · Kendall_τ(rank_t, rank_{t-1})     # rank-order stability
 
 ---
 
+## Findings
+
+Real LendingClub data (2007–2018, 1.35M resolved loans, 42 rolling windows). Full detail in
+**[RESULTS.md](RESULTS.md)**; hypotheses, metrics and tests were fixed in advance in
+**[ANALYSIS_PLAN.md](ANALYSIS_PLAN.md)** (its hash is stamped into the results).
+
+**Credit model** (train 2007–2017, test 2018 on 56k loans): AUC **0.723**, Gini 0.446, KS 0.327.
+
+**Explanation drift is real but small.** Retraining a model on an 80% subsample and re-explaining gives a
+*noise floor* for XSI. Consecutive-window XSI falls below the entire noise band in 93% of windows
+(0.875 vs 0.920 for the primary variant), so explanations change more over time than retraining noise alone explains.
+
+| Pre-declared hypothesis | Result | Verdict |
+|---|---|---|
+| **H1** excess drift rises with market stress (real VIX) | ρ = 0.43, circular-shift p = 0.073, Holm-adj. p = 0.22 | Directionally consistent (excess drift 1.6× higher in the high-VIX tercile), **not significant** |
+| **H2** low XSI precedes AUC decline | ρ = 0.17, p = 0.46 (n = 24) | **Not supported** |
+| **H3** explanation-drift alerts precede performance degradation | 2 degradation events in the usable windows | **Underpowered** — cannot be resolved |
+
+The original v1 analysis was also negative: XSI was flat across HMM-derived regimes (0.562 / 0.559 / 0.558,
+Kruskal-Wallis p = 0.995), uncorrelated with AUC (r = 0.14), and the fixed-threshold EART fired on 85% of windows, so
+its "3-month lead time" was an artefact. v2 replaces the fixed threshold, the model-derived regimes and the
+signed-SHAP cosine with the calibrated design above. **The early-warning claim is not supported by this data.**
+
+Caveats: stress windows (2008–2010) are also the smallest, so stress and sample size are partly confounded;
+LendingClub contains one real stress episode; the permutation test is still somewhat anti-conservative on
+strongly autocorrelated series (measured false-positive rate ≈ 21% at nominal 5%). All secondary p-values are uncorrected.
+
+![XSI vs noise floor](results_v2/figures/v2_fig1_xsi_vs_noise_floor.png)
+
+---
+
 ## Methodology
 
 1. **Phase 1 — Data pipeline & feature engineering.** Load LendingClub loan data, filter to resolved outcomes (Fully Paid vs. Charged Off/Default), engineer financial features, and merge quarterly macroeconomic context (Fed Funds Rate, VIX bucket).
@@ -40,6 +71,14 @@ XSI_t = 0.4 · Kendall_τ(rank_t, rank_{t-1})     # rank-order stability
    - Label each window's market regime (Bull / Neutral / Bear+Crisis) with a 3-state HMM over macroeconomic features.
    - Run **EART**: trigger a retraining alert when XSI drops below threshold, and compare its lead time against an AUC-degradation baseline trigger.
 5. **Phase 5 — Results & figures.** Regime-stratified XSI/AUC summary table and the full set of paper figures (XSI timeline, XSI-by-regime violin plot, XSI component decomposition, EART vs. baseline trigger comparison, SHAP-vs-LIME agreement, AUC-vs-XSI scatter).
+6. **Phase 6 — XDrift v2: calibrated, pre-declared analysis** (`xdrift_v2.py`, [ANALYSIS_PLAN.md](ANALYSIS_PLAN.md)).
+   - **Noise floor:** 3 replicate models per window (80% subsample, different seed, independent eval draw) define how
+     much XSI moves from retraining/sampling noise alone; *excess drift* = noise floor − observed XSI.
+   - **Real market regimes:** CBOE VIX over each window replaces the HMM-on-default-rate regimes.
+   - **Metric variants** (signed cosine, |SHAP|-profile cosine, Kendall τ only, top-10 Jaccard), all reported.
+   - **Inference:** exact circular-shift permutation tests (windows overlap 75%), Holm correction on 3 primary tests,
+     permutation null for the early-warning hit rate, bootstrap AUC intervals, relative (not fixed-level) degradation events.
+   - Validated: reproduces the v1 XSI (r = 0.998) and ships unit tests (`test_xdrift_v2.py`).
 
 ## Dataset
 
@@ -53,6 +92,12 @@ XSI_t = 0.4 · Kendall_τ(rank_t, rank_{t-1})     # rank-order stability
 
 ```
 ├── xdrift.ipynb       # Main notebook: full XDrift pipeline (Phases 1-5)
+├── xdrift_v2.py        # v2: noise-floor-calibrated XSI, VIX regimes, permutation tests, figures
+├── test_xdrift_v2.py   # Unit tests for the statistics
+├── ANALYSIS_PLAN.md    # Hypotheses/metrics/tests declared before the v2 run
+├── RESULTS.md          # Generated v2 results (primary tests, noise floor, all variants)
+├── results_v1/         # Notebook run: per-window CSV + key figures
+├── results_v2/         # v2 outputs: windows_v2.csv, secondary_tests.csv, figures/
 ├── RUNBOOK.md          # How to run it (Kaggle/local), plus a log of bugs found & fixed
 ├── README.md           # This file
 ├── requirements.txt    # Python dependencies (local runs)
@@ -77,6 +122,18 @@ unzip lending-club.zip -d data/
 
 The notebook uses `data/accepted_2007_to_2018Q4.csv` locally by default. If your CSV lives elsewhere, set `XDRIFT_RAW_DATA` to its path before launching Jupyter, then run all cells. Start with a low `SHAP_SAMPLES_PER_WINDOW` and `N_OPTUNA_TRIALS = 0` for a smoke test before committing to the full run — see [RUNBOOK.md](RUNBOOK.md) for details.
 
+### Reproducing v2
+
+Run notebook cells 1–9 once (they write `train.parquet` / `test.parquet` to the working directory), download the
+[CBOE VIX history](https://cdn.cboe.com/api/global/us_indices/daily_prices/VIX_History.csv) to `data/fred/VIXCLS_cboe.csv`, then:
+
+```bash
+python xdrift_v2.py all --data-dir working --vix data/fred/VIXCLS_cboe.csv --out results_v2 --v1 results_v1/xdrift_results.csv
+python -m pytest test_xdrift_v2.py
+```
+
+The compute stage takes ~15 minutes on a 20-core CPU and resumes if interrupted.
+
 ## Technical Stack
 
 | Library                                                   | Purpose                                                    |
@@ -93,7 +150,7 @@ The notebook uses `data/accepted_2007_to_2018Q4.csv` locally by default. If your
 
 ## Practical Implications
 
-XSI is designed as a **proactive monitoring metric** for deployed credit models — EART can trigger a retraining/audit before AUC-based monitoring would notice anything wrong. This is relevant for regulatory compliance under the **EU AI Act** (Article 9: Risk Management) and **SR 11-7** (OCC/Federal Reserve model risk management guidance).
+XSI is designed as a **monitoring metric** for deployed credit models. On LendingClub data it detects explanation change beyond retraining noise, but this study did **not** find that it reliably leads AUC degradation (the question is underpowered with the few degradation events available), so it is best treated as a complementary audit signal rather than a proven early-warning trigger. Explanation monitoring is relevant to model-risk expectations under the **EU AI Act** (Article 9: Risk Management) and **SR 11-7** (OCC/Federal Reserve model risk management guidance).
 
 ## References
 

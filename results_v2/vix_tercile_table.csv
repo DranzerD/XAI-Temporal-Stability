@@ -1,0 +1,4 @@
+vix_regime,xsi_abs_consec_mean,xsi_abs_consec_std,xsi_abs_consec_count,xsi_abs_excess_mean,xsi_abs_excess_std,xsi_abs_excess_count,vix_train_mean_mean,vix_train_mean_std,vix_train_mean_count,eval_auc_mean,eval_auc_std,eval_auc_count,train_size_mean,train_size_std,train_size_count
+Calm,0.8862,0.0336,14,0.0362,0.036,14,13.5774,1.0698,14,0.7242,0.0157,14,188320.0714,53744.5211,14
+Mid,0.8787,0.0261,13,0.0394,0.0249,13,17.7043,2.1645,13,0.7032,0.0225,13,188495.9231,160483.3366,13
+Stress,0.8617,0.0274,14,0.0579,0.0267,14,28.374,6.6243,14,0.6493,0.0357,14,11254.0,11741.9331,14

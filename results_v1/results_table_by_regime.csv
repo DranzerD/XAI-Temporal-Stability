@@ -1,0 +1,6 @@
+,xsi,xsi,eval_auc,eval_auc,xsi_kendall_norm,xsi_kendall_norm,xsi_cosine_sim,xsi_cosine_sim,xsi_psi_component,xsi_psi_component
+,mean,std,mean,std,mean,std,mean,std,mean,std
+regime_name,,,,,,,,,,
+Bear/Crisis,0.5615,0.1182,0.7018,0.0307,0.7066,0.0492,0.3633,0.2715,0.6676,0.0722
+Bull,0.5583,0.108,0.6136,0.029,0.7353,0.0361,0.3448,0.2463,0.6314,0.0547
+Neutral,0.5585,0.1258,0.7008,0.0301,0.711,0.0687,0.361,0.2911,0.6482,0.0627
