@@ -31,32 +31,26 @@ XSI_t = 0.4 · Kendall_τ(rank_t, rank_{t-1})     # rank-order stability
 
 ## Findings
 
-Real LendingClub data (2007–2018, 1.35M resolved loans, 42 rolling windows). Full detail in
-**[RESULTS.md](RESULTS.md)**; hypotheses, metrics and tests were fixed in advance in
-**[ANALYSIS_PLAN.md](ANALYSIS_PLAN.md)** (its hash is stamped into the results).
+Real LendingClub data (2007–2018, 1.35M resolved loans). Three studies, each with a **pre-declared analysis plan**
+(hash-stamped into its results). Paper-style summary: **[WRITEUP.md](WRITEUP.md)** · details: [RESULTS.md](RESULTS.md) (v2),
+[RESULTS_V3.md](RESULTS_V3.md) (v3) · interactive: `streamlit run app.py`.
 
-**Credit model** (train 2007–2017, test 2018 on 56k loans): AUC **0.723**, Gini 0.446, KS 0.327.
+**Bottom line: explanations do drift beyond retraining noise, but explanation drift is *not* a useful early-warning signal for
+performance decay on this data, and it does not beat a standard score-PSI monitor.**
 
-**Explanation drift is real but small.** Retraining a model on an 80% subsample and re-explaining gives a
-*noise floor* for XSI. Consecutive-window XSI falls below the entire noise band in 93% of windows
-(0.875 vs 0.920 for the primary variant), so explanations change more over time than retraining noise alone explains.
-
-| Pre-declared hypothesis | Result | Verdict |
+| Study | Question | Result |
 |---|---|---|
-| **H1** excess drift rises with market stress (real VIX) | ρ = 0.43, circular-shift p = 0.073, Holm-adj. p = 0.22 | Directionally consistent (excess drift 1.6× higher in the high-VIX tercile), **not significant** |
-| **H2** low XSI precedes AUC decline | ρ = 0.17, p = 0.46 (n = 24) | **Not supported** |
-| **H3** explanation-drift alerts precede performance degradation | 2 degradation events in the usable windows | **Underpowered** — cannot be resolved |
+| Base model | Is the credit model sound? | Test (2018) AUC **0.723**, Gini 0.446, KS 0.327 |
+| v1 | Fixed-threshold EART, HMM regimes | Negative: XSI flat across regimes (p = 0.995), uncorrelated with AUC; the trigger fired on 85% of windows, so its "lead time" was an artefact |
+| v2 | Does XSI drift exceed retraining noise? Rise with VIX? | Yes, drift exceeds the noise floor in **93%** of windows; rises with VIX only directionally (ρ = 0.43, p = 0.073, Holm 0.22) |
+| v3 | Frozen models: does drift track/lead AUC decay? Beat score PSI? | **No.** P1 ρ = 0.08 [−0.15, 0.41]; P2 ρ = 0.06 [−0.21, 0.39]; P3 ΔAUROC vs score PSI = 0.013 [−0.16, 0.18] (all Holm-adj. p = 1.0) |
 
-The original v1 analysis was also negative: XSI was flat across HMM-derived regimes (0.562 / 0.559 / 0.558,
-Kruskal-Wallis p = 0.995), uncorrelated with AUC (r = 0.14), and the fixed-threshold EART fired on 85% of windows, so
-its "3-month lead time" was an artefact. v2 replaces the fixed threshold, the model-derived regimes and the
-signed-SHAP cosine with the calibrated design above. **The early-warning claim is not supported by this data.**
-
-Caveats: stress windows (2008–2010) are also the smallest, so stress and sample size are partly confounded;
-LendingClub contains one real stress episode; the permutation test is still somewhat anti-conservative on
-strongly autocorrelated series (measured false-positive rate ≈ 21% at nominal 5%). All secondary p-values are uncorrected.
+v3 uses 13 frozen models × 6 quarters (17 decay events) with model-swap permutation tests and cluster-bootstrap CIs. The intervals
+are wide, so these are failures to find an effect rather than proof of none. Post-hoc: all decay events come from 5 late-2015
+models, so decay here is largely a cohort effect.
 
 ![XSI vs noise floor](results_v2/figures/v2_fig1_xsi_vs_noise_floor.png)
+![v3 monitors](results_v3/figures/v3_fig2_monitor_comparison.png)
 
 ---
 
@@ -79,6 +73,9 @@ strongly autocorrelated series (measured false-positive rate ≈ 21% at nominal 
    - **Inference:** exact circular-shift permutation tests (windows overlap 75%), Holm correction on 3 primary tests,
      permutation null for the early-warning hit rate, bootstrap AUC intervals, relative (not fixed-level) degradation events.
    - Validated: reproduces the v1 XSI (r = 0.998) and ships unit tests (`test_xdrift_v2.py`).
+7. **Phase 7 — XDrift v3: frozen-model monitoring** (`xdrift_v3.py`, [ANALYSIS_PLAN_V3.md](ANALYSIS_PLAN_V3.md)). 17 quarterly frozen models, six monitored
+   quarters each; explanation drift vs. score/feature PSI and KS baselines for tracking and leading AUC decay, with model-swap permutation tests,
+   cluster-bootstrap CIs, Holm correction, and sensitivity analyses.
 
 ## Dataset
 
@@ -93,11 +90,15 @@ strongly autocorrelated series (measured false-positive rate ≈ 21% at nominal 
 ```
 ├── xdrift.ipynb       # Main notebook: full XDrift pipeline (Phases 1-5)
 ├── xdrift_v2.py        # v2: noise-floor-calibrated XSI, VIX regimes, permutation tests, figures
-├── test_xdrift_v2.py   # Unit tests for the statistics
-├── ANALYSIS_PLAN.md    # Hypotheses/metrics/tests declared before the v2 run
-├── RESULTS.md          # Generated v2 results (primary tests, noise floor, all variants)
+├── xdrift_v3.py        # v3: frozen-model monitoring vs. PSI/KS baselines, model-swap inference
+├── test_xdrift_v2.py / test_xdrift_v3.py   # Unit tests for the statistics (14 tests)
+├── ANALYSIS_PLAN.md / ANALYSIS_PLAN_V3.md  # Hypotheses/metrics/tests declared before each run
+├── RESULTS.md / RESULTS_V3.md              # Generated results (primary tests, all variants)
+├── WRITEUP.md          # Paper-style summary of all three studies
+├── app.py              # Streamlit results explorer (reads the committed CSVs)
 ├── results_v1/         # Notebook run: per-window CSV + key figures
 ├── results_v2/         # v2 outputs: windows_v2.csv, secondary_tests.csv, figures/
+├── results_v3/         # v3 outputs: panel_v3.csv, monitor tables, figures/
 ├── RUNBOOK.md          # How to run it (Kaggle/local), plus a log of bugs found & fixed
 ├── README.md           # This file
 ├── requirements.txt    # Python dependencies (local runs)
@@ -129,10 +130,12 @@ Run notebook cells 1–9 once (they write `train.parquet` / `test.parquet` to th
 
 ```bash
 python xdrift_v2.py all --data-dir working --vix data/fred/VIXCLS_cboe.csv --out results_v2 --v1 results_v1/xdrift_results.csv
-python -m pytest test_xdrift_v2.py
+python xdrift_v3.py all --data-dir working --out results_v3
+python -m pytest
+streamlit run app.py   # pip install -r requirements-app.txt
 ```
 
-The compute stage takes ~15 minutes on a 20-core CPU and resumes if interrupted.
+v2 takes ~15 minutes and v3 ~10 minutes (sharded across 3 processes) on a 20-core CPU; both resume if interrupted.
 
 ## Technical Stack
 
@@ -150,7 +153,7 @@ The compute stage takes ~15 minutes on a 20-core CPU and resumes if interrupted.
 
 ## Practical Implications
 
-XSI is designed as a **monitoring metric** for deployed credit models. On LendingClub data it detects explanation change beyond retraining noise, but this study did **not** find that it reliably leads AUC degradation (the question is underpowered with the few degradation events available), so it is best treated as a complementary audit signal rather than a proven early-warning trigger. Explanation monitoring is relevant to model-risk expectations under the **EU AI Act** (Article 9: Risk Management) and **SR 11-7** (OCC/Federal Reserve model risk management guidance).
+XSI was proposed as a **monitoring metric** for deployed credit models. On LendingClub data it detects explanation change beyond retraining noise, but in the frozen-model study it neither tracked nor led performance decay and did not beat a standard score-PSI monitor (see Findings), so on this evidence it is best treated as a complementary audit signal for explanation stability, not as a proven early-warning trigger. Explanation monitoring is relevant to model-risk expectations under the **EU AI Act** (Article 9: Risk Management) and **SR 11-7** (OCC/Federal Reserve model risk management guidance).
 
 ## References
 
